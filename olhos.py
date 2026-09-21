@@ -8,7 +8,34 @@ import threading
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from datetime import datetime
+from activities import bored, clock, coin, game, music, reading, sleep, spy, thinking
+from activities.phone import atualizar_telemovel, desenhar_telemovel
 from icons import carregar_icone, obter_icone_clima
+
+
+ATUALIZADORES_ATIVIDADES = {
+    "telemovel": atualizar_telemovel,
+    "horas": clock.atualizar,
+    "moeda": coin.atualizar,
+    "pensar": thinking.atualizar,
+    "sono": sleep.atualizar,
+    "musica": music.atualizar,
+    "ler": reading.atualizar,
+    "jogar": game.atualizar,
+    "entediado": bored.atualizar,
+    "espiar": spy.atualizar,
+}
+
+DESENHADORES_ATIVIDADES = {
+    "telemovel": desenhar_telemovel,
+    "horas": clock.desenhar,
+    "moeda": coin.desenhar,
+    "pensar": thinking.desenhar,
+    "musica": music.desenhar,
+    "ler": reading.desenhar,
+    "jogar": game.desenhar,
+    "espiar": spy.desenhar,
+}
 
 pygame.init()
 
@@ -1129,112 +1156,32 @@ def atualizar_atividade_idle(agora):
             iniciar_atividade_idle(agora)
         return 0, 0, 1
 
-    tempo = agora - tempo_fase
     atividade = atividade_idle_atual
-    duracoes = {
-        "telemovel": {"APARECER": 350, "OLHAR": 900, "INTERAGIR": 2800, "GUARDAR": 600},
-        "horas": {"APARECER": 350, "OLHAR": 700, "VER_HORA": 2200, "REACAO": 650, "GUARDAR": 600},
-        "moeda": {"APARECER": 400, "OLHAR": 700, "ATIRAR": 550, "ACOMPANHAR": 850, "APANHAR": 650, "PAUSA": 450, "DESAPARECER": 450},
-        "pensar": {"APARECER": 250, "OLHAR": 900, "PAUSA": 1200, "VOLTAR": 850},
-        "sono": {"APARECER": 500, "FECHAR": 800, "DORMIR": 1400, "ACORDAR": 1000, "SUSTO": 350, "VOLTAR": 700},
-        "musica": {"APARECER": 350, "OUVIR": 3000, "DESAPARECER": 500},
-        "ler": {"APARECER": 400, "LER": 3200, "FECHAR": 650},
-        "jogar": {"APARECER": 400, "JOGAR": 2800, "RESULTADO": 800, "DESAPARECER": 500},
-        "entediado": {"APARECER": 250, "ESQUERDA": 700, "DIREITA": 700, "CIMA": 650, "PARADO": 1100, "FIM": 500},
-        "espiar": {"APARECER": 350, "ESQUERDA": 900, "OUTRO_LADO": 450, "CENTRO": 700, "FIM": 450},
-    }
-    proxima = {
-        "telemovel": {"APARECER": "OLHAR", "OLHAR": "INTERAGIR", "INTERAGIR": "GUARDAR", "GUARDAR": "FIM"},
-        "horas": {"APARECER": "OLHAR", "OLHAR": "VER_HORA", "VER_HORA": "REACAO", "REACAO": "GUARDAR", "GUARDAR": "FIM"},
-        "moeda": {"APARECER": "OLHAR", "OLHAR": "ATIRAR", "ATIRAR": "ACOMPANHAR", "ACOMPANHAR": "APANHAR", "APANHAR": "PAUSA", "PAUSA": "DESAPARECER", "DESAPARECER": "FIM"},
-        "pensar": {"APARECER": "OLHAR", "OLHAR": "PAUSA", "PAUSA": "VOLTAR", "VOLTAR": "FIM"},
-        "sono": {"APARECER": "FECHAR", "FECHAR": "DORMIR", "DORMIR": "ACORDAR", "ACORDAR": "SUSTO", "SUSTO": "VOLTAR", "VOLTAR": "FIM"},
-        "musica": {"APARECER": "OUVIR", "OUVIR": "DESAPARECER", "DESAPARECER": "FIM"},
-        "ler": {"APARECER": "LER", "LER": "FECHAR", "FECHAR": "FIM"},
-        "jogar": {"APARECER": "JOGAR", "JOGAR": "RESULTADO", "RESULTADO": "DESAPARECER", "DESAPARECER": "FIM"},
-        "entediado": {"APARECER": "ESQUERDA", "ESQUERDA": "DIREITA", "DIREITA": "CIMA", "CIMA": "PARADO", "PARADO": "FIM"},
-        "espiar": {"APARECER": "ESQUERDA", "ESQUERDA": "OUTRO_LADO", "OUTRO_LADO": "CENTRO", "CENTRO": "FIM"},
-    }
+    atualizador = ATUALIZADORES_ATIVIDADES[atividade]
+    x, y, abertura, fase_atividade, tempo_fase = atualizador(
+        agora, fase_atividade, tempo_fase, atividade_idle_dados
+    )
     if fase_atividade == "FIM":
         finalizar_atividade_idle(agora)
         return 0, 0, 1
-    if tempo >= duracoes[atividade].get(fase_atividade, 500):
-        _mudar_fase_atividade(proxima[atividade][fase_atividade], agora)
-        if fase_atividade == "FIM":
-            finalizar_atividade_idle(agora)
-            return 0, 0, 1
 
-    progresso = min(1, (agora - tempo_fase) / max(1, duracoes[atividade].get(fase_atividade, 500)))
-    x = y = 0
-    abertura = 1
-    if atividade in ("telemovel", "horas", "ler", "jogar"):
-        y = 28
-        if fase_atividade in ("INTERAGIR", "VER_HORA", "LER", "JOGAR"):
-            x = math.sin(agora * 0.012) * 12
-    elif atividade == "moeda":
-        x = (atividade_idle_dados["objeto_x"] - 400) * progresso
-        y = -35 * math.sin(math.pi * progresso) if fase_atividade in ("ATIRAR", "ACOMPANHAR") else 18
-    elif atividade == "pensar":
-        y = -28 if fase_atividade in ("OLHAR", "PAUSA") else -28 * (1 - progresso)
-    elif atividade == "sono":
-        if fase_atividade in ("FECHAR", "DORMIR"):
-            abertura = 1 - min(1, progresso)
-        elif fase_atividade == "ACORDAR":
-            abertura = progresso
-        elif fase_atividade == "SUSTO":
-            y = -18 * (1 - progresso)
-    elif atividade == "musica":
-        y = math.sin(agora * 0.014) * 10
-        x = math.sin(agora * 0.009) * 14
-    elif atividade == "entediado":
-        x = {"ESQUERDA": -45, "DIREITA": 45}.get(fase_atividade, 0)
-        y = -24 if fase_atividade == "CIMA" else 0
-    elif atividade == "espiar":
-        x = {"ESQUERDA": -48, "OUTRO_LADO": 48}.get(fase_atividade, 0)
     return x, y, abertura
 
 
 def desenhar_atividade_idle(superficie, agora):
     if atividade_idle_atual is None:
         return
-    x = atividade_idle_dados.get("objeto_x", 400)
-    y = 365
     atividade = atividade_idle_atual
-    fase = fase_atividade
-    if atividade in ("telemovel", "horas"):
-        pygame.draw.rect(superficie, (255, 255, 255), (x - 22, y - 34, 44, 68), 3)
-        pygame.draw.circle(superficie, (255, 255, 255), (x, y + 23), 3)
-        if atividade == "horas":
-            texto = datetime.now().strftime("%H:%M")
-            fonte = criar_fonte(24, negrito=True)
-            superficie.blit(fonte.render(texto, True, (255, 255, 255)), (x - 31, y - 9))
-        elif fase == "INTERAGIR":
-            pygame.draw.circle(superficie, (255, 255, 255), (x + 9, y - 8), 3)
-    elif atividade == "moeda":
-        moeda_y = y - 45 - int(35 * math.sin(math.pi * min(1, (agora - tempo_fase) / 850))) if fase in ("ATIRAR", "ACOMPANHAR") else y
-        pygame.draw.circle(superficie, (255, 255, 255), (x, moeda_y), 12, 3)
-        pygame.draw.line(superficie, (255, 255, 255), (x - 4, moeda_y - 7), (x + 4, moeda_y + 7), 2)
-    elif atividade == "pensar":
-        pygame.draw.circle(superficie, (255, 255, 255), (520, 125), 5, 2)
-        pygame.draw.circle(superficie, (255, 255, 255), (540, 105), 9, 2)
-    elif atividade == "musica":
-        pygame.draw.line(superficie, (255, 255, 255), (x, y - 30), (x, y + 8), 4)
-        pygame.draw.line(superficie, (255, 255, 255), (x, y - 30), (x + 22, y - 38), 4)
-        pygame.draw.circle(superficie, (255, 255, 255), (x - 5, y + 10), 8)
-        pygame.draw.circle(superficie, (255, 255, 255), (x + 17, y + 2), 8)
-    elif atividade == "ler":
-        pygame.draw.polygon(superficie, (255, 255, 255), [(x - 55, y + 20), (x, y + 5), (x + 55, y + 20), (x, y + 35)], 3)
-        pygame.draw.line(superficie, (255, 255, 255), (x, y + 5), (x, y + 35), 2)
-        pagina = int((agora - inicio_atividade_idle) / 700) % 3
-        for indice in range(pagina + 1):
-            pygame.draw.line(superficie, (255, 255, 255), (x - 35, y + 17 + indice * 5), (x - 8, y + 13 + indice * 5), 2)
-    elif atividade == "jogar":
-        pygame.draw.rect(superficie, (255, 255, 255), (x - 45, y - 14, 90, 28), 3)
-        pygame.draw.circle(superficie, (255, 255, 255), (x - 22, y), 6, 2)
-        pygame.draw.circle(superficie, (255, 255, 255), (x + 20, y - 4), 3)
-        pygame.draw.circle(superficie, (255, 255, 255), (x + 28, y + 5), 3)
-    elif atividade == "espiar":
-        pygame.draw.rect(superficie, (255, 255, 255), (0 if x < 400 else LARGURA - 22, 320, 22, 80), 3)
+    desenhador = DESENHADORES_ATIVIDADES.get(atividade)
+    if desenhador is not None:
+        desenhador(
+            superficie,
+            agora,
+            fase_atividade,
+            inicio_atividade_idle,
+            atividade_idle_dados,
+            criar_fonte,
+        )
 
 
 def atualizar_comportamento(agora):
